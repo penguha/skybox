@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Skybox Forge</title>
+<meta name="description" content="Drop in a picture to get a seamless 2:1 panorama or the six square faces of a Roblox skybox.">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500..800&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+html,body{margin:0}[hidden]{display:none!important}img{max-width:100%}
+
+/* Layout: two-pane workbench (controls left, live result right); stacks on phones. Night-ink surfaces, one teal accent taken from the sky itself. */
+:root{
+  --bg:#070d14; --panel:#0d1721; --panel-2:#122130; --line:#1f3447;
+  --fg:#e4eef5; --muted:#8aa3b5; --accent:#35c4d8; --accent-ink:#04222a; --warn:#e8b04a;
+  --font-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --font-body:'IBM Plex Sans','Segoe UI',system-ui,sans-serif;
+  --font-mono:'IBM Plex Mono',ui-monospace,Menlo,Consolas,monospace;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme:light){:root:not([data-theme="dark"]){
+  --bg:#eef4f7; --panel:#ffffff; --panel-2:#e3edf2; --line:#c5d6e0;
+  --fg:#0c1c27; --muted:#4f6a7b; --accent:#0a7f93; --accent-ink:#ffffff; --warn:#8a5a00; color-scheme:light}}
+:root[data-theme="light"]{
+  --bg:#eef4f7; --panel:#ffffff; --panel-2:#e3edf2; --line:#c5d6e0;
+  --fg:#0c1c27; --muted:#4f6a7b; --accent:#0a7f93; --accent-ink:#ffffff; --warn:#8a5a00; color-scheme:light}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--font-body);
+  padding-block:20px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+.app{max-width:1180px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:8px 24px}
+h1{font:700 clamp(28px,5vw,40px)/1 var(--font-display);letter-spacing:-.02em;margin:0;text-wrap:balance}
+.lede{margin:0;color:var(--muted);max-width:46ch}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tab{font:600 14px var(--font-body);color:var(--muted);background:none;border:0;padding:10px 16px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;white-space:nowrap}
+.tab[aria-selected="true"]{color:var(--fg);border-color:var(--accent)}
+.tab:hover{color:var(--fg)}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.pane{display:grid;grid-template-columns:minmax(0,340px) minmax(0,1fr);gap:24px;align-items:start}
+.pane[hidden]{display:none}
+@media (max-width:820px){.pane{grid-template-columns:minmax(0,1fr)}}
+.stack{display:flex;flex-direction:column;gap:16px;min-width:0}
+.drop{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;text-align:center;
+  border:1.5px dashed var(--line);border-radius:10px;background:var(--panel);padding:22px 16px;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--accent);background:var(--panel-2)}
+.drop strong{font:600 15px var(--font-display)}
+.drop small{color:var(--muted)}
+.drop input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.drop:focus-within{outline:2px solid var(--accent);outline-offset:2px}
+.thumb{display:flex;align-items:center;gap:10px;font:12px var(--font-mono);color:var(--muted)}
+.thumb canvas{width:44px;height:44px;border-radius:4px;border:1px solid var(--line);object-fit:cover;flex:none}
+fieldset{border:0;margin:0;padding:0;display:flex;flex-direction:column;gap:12px;min-width:0}
+legend{font:600 11px var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:0;margin-bottom:10px}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:13px;color:var(--muted)}
+label.f span b{color:var(--fg);font:500 12px var(--font-mono);float:right}
+select,input[type=text]{font:14px var(--font-body);color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:8px 10px;width:100%;min-width:0}
+input[type=range]{width:100%;accent-color:var(--accent)}
+.check{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.check input{accent-color:var(--accent);width:16px;height:16px}
+.btn{font:600 14px var(--font-body);border-radius:7px;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);padding:9px 14px;cursor:pointer}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.primary:hover{filter:brightness(1.08)}
+.btn.sm{padding:5px 9px;font-size:12px}
+.row{display:flex;flex-wrap:wrap;gap:8px}
+.stage{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.stage canvas{display:block;width:100%;height:auto;border-radius:6px;background:#000}
+.meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:6px 14px;font:12px var(--font-mono);color:var(--muted)}
+.faces{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:12px}
+.face{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.face canvas{width:100%;aspect-ratio:1;border-radius:5px;display:block;background:#000}
+.face h3{margin:0;font:600 14px var(--font-display);display:flex;justify-content:space-between;align-items:baseline;gap:6px}
+.face h3 code{font:400 10px var(--font-mono);color:var(--muted)}
+.face .row{gap:4px}
+.mark{display:inline-block;font:500 10px var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--warn);border:1px solid currentColor;border-radius:3px;padding:1px 5px}
+#status{min-height:20px;font:13px var(--font-mono);color:var(--accent)}
+details{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px}
+summary{cursor:pointer;font:600 15px var(--font-display)}
+.ids{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+textarea{width:100%;min-height:190px;font:12px/1.5 var(--font-mono);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;resize:vertical}
+.hint{font-size:13px;color:var(--muted);margin:0}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Skybox Forge</h1>
+    <p class="lede">Turn one picture into a seamless 2:1 panorama, or into the six square faces a Roblox Sky object needs.</p>
+  </header>
+
+  <div class="tabs" role="tablist">
+    <button class="tab" role="tab" id="t-pano" aria-selected="true" aria-controls="pane-pano">Panorama 2:1</button>
+    <button class="tab" role="tab" id="t-box" aria-selected="false" aria-controls="pane-box">Skybox 6 faces</button>
+  </div>
+
+  <section class="pane" id="pane-pano" role="tabpanel" aria-labelledby="t-pano">
+    <div class="stack">
+      <label class="drop" id="pano-drop">
+        <strong>Drop a picture here</strong>
+        <small>or click to browse. Any size or shape. You can also paste.</small>
+        <input type="file" id="pano-file" accept="image/*">
+      </label>
+      <div class="thumb"><canvas id="pano-thumb" width="44" height="44"></canvas><span id="pano-name">Sample night sky</span> <span class="mark">example</span></div>
+      <fieldset>
+        <legend>Panorama</legend>
+        <label class="f">Output size
+          <select id="pano-size"><option value="1024x512">1024 × 512</option><option value="2048x1024" selected>2048 × 1024</option><option value="4096x2048">4096 × 2048</option></select></label>
+        <label class="f">Fit
+          <select id="pano-mode"><option value="fit" selected>Fit width, extend sky up and down</option><option value="stretch">Stretch to fill 2:1</option></select></label>
+        <label class="f" id="pos-wrap"><span>Vertical position <b id="pos-v">50%</b></span>
+          <input type="range" id="pano-pos" min="0" max="100" value="50"></label>
+        <label class="f"><span>Seam blend <b id="blend-v">15%</b></span>
+          <input type="range" id="pano-blend" min="0" max="40" value="15"></label>
+        <label class="check"><input type="checkbox" id="pano-seam"> Show the seam in the middle to check it</label>
+      </fieldset>
+      <div class="row">
+        <button class="btn primary" id="pano-save">Save panorama PNG</button>
+        <button class="btn" id="pano-to-box">Make skybox faces from this</button>
+      </div>
+    </div>
+    <div class="stage">
+      <canvas id="pano-canvas" width="1200" height="600" aria-label="Panorama preview"></canvas>
+      <div class="meta"><span id="pano-info"></span><span>Left and right edges join with no visible line</span></div>
+    </div>
+  </section>
+
+  <section class="pane" id="pane-box" role="tabpanel" aria-labelledby="t-box" hidden>
+    <div class="stack">
+      <label class="drop" id="box-drop">
+        <strong>Drop a square picture here</strong>
+        <small>A 1:1 image goes onto all six faces. Other shapes are cropped from the centre.</small>
+        <input type="file" id="box-file" accept="image/*">
+      </label>
+      <div class="thumb"><canvas id="box-thumb" width="44" height="44"></canvas><span id="box-name">Sample night sky</span> <span class="mark">example</span></div>
+      <fieldset>
+        <legend>Source</legend>
+        <label class="check"><input type="radio" name="src" value="same" checked> Same image on all six faces</label>
+        <label class="check"><input type="radio" name="src" value="pano"> Cut from the 2:1 panorama</label>
+        <p class="hint" id="src-note">Panorama mode uses what you made in the first tab.</p>
+      </fieldset>
+      <fieldset>
+        <legend>Faces</legend>
+        <label class="f">Face size
+          <select id="box-size"><option value="512">512 × 512</option><option value="1024" selected>1024 × 1024</option><option value="2048">2048 × 2048</option></select></label>
+        <label class="f">Top face (Up)
+          <select id="box-up"><option value="same" selected>Same image</option><option value="solid">Solid colour from the image top</option></select></label>
+        <label class="f">Bottom face (Down)
+          <select id="box-dn"><option value="same" selected>Same image</option><option value="solid">Solid colour from the image bottom</option></select></label>
+      </fieldset>
+      <div class="row"><button class="btn primary" id="box-zip">Save all six as ZIP</button></div>
+    </div>
+    <div class="stack">
+      <div class="faces" id="faces"></div>
+      <p class="hint">Every face can take its own picture, flip or rotate. Side faces that look turned in Studio usually need one rotate click.</p>
+      <details>
+        <summary>After uploading: Roblox Studio script</summary>
+        <p class="hint" style="margin-top:10px">Upload each face in Creator Hub, paste the six asset IDs, copy the script, then run it in Studio from View, Command Bar.</p>
+        <div class="ids" id="ids"></div>
+        <label class="check"><input type="checkbox" id="luau-light" checked> Also set midnight lighting with a teal haze</label>
+        <textarea id="luau-out" readonly aria-label="Luau script"></textarea>
+        <div class="row" style="margin-top:10px"><button class="btn" id="luau-copy">Copy script</button></div>
+      </details>
+    </div>
+  </section>
+  <div id="status" role="status" aria-live="polite"></div>
+</div>
+<script>
+
+const $ = s => document.querySelector(s);
+const mk = (w, h) => { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; };
+let dl = null;
+(async () => { try { dl = await window.claude?.use?.('downloads'); } catch (e) { dl = null; } })();
+
+let statusTimer;
+function say(msg) { const s = $('#status'); s.textContent = msg; clearTimeout(statusTimer); statusTimer = setTimeout(() => { s.textContent = ''; }, 6000); }
+async function saveFile(filename, blob) {
+  if (dl) {
+    try { await dl.save({ filename, data: blob }); say('Saved ' + filename); }
+    catch (e) { if (e && e.code === 'declined') return; say('Could not save: ' + ((e && e.message) || 'unknown error')); }
+    return;
+  }
+  const url = URL.createObjectURL(blob), a = document.createElement('a');
+  a.href = url; a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+  say('Saved ' + filename);
+}
+const toBlob = c => new Promise(r => c.toBlob(r, 'image/png'));
+
+async function fileToCanvas(file) {
+  const bmp = await createImageBitmap(file);
+  const c = mk(bmp.width, bmp.height);
+  c.getContext('2d').drawImage(bmp, 0, 0);
+  if (bmp.close) bmp.close();
+  return c;
+}
+
+function sampleSky() {
+  const s = 1024, c = mk(s, s), x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 0, s);
+  g.addColorStop(0, '#02050a'); g.addColorStop(.45, '#06161f'); g.addColorStop(1, '#0e5666');
+  x.fillStyle = g; x.fillRect(0, 0, s, s);
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  for (let i = 0; i < 280; i++) {
+    const r = rnd() * 1.1 + .3;
+    x.fillStyle = `rgba(255,255,255,${.3 + rnd() * .6})`;
+    x.beginPath(); x.arc(rnd() * s, Math.pow(rnd(), 1.6) * s * .8, r, 0, 7); x.fill();
+  }
+  x.filter = 'blur(14px)';
+  for (let k = 0; k < 16; k++) {
+    x.fillStyle = `rgba(80,200,220,${.06 + rnd() * .1})`;
+    x.beginPath(); x.ellipse(rnd() * s, s * (.35 + rnd() * .45), 120 + rnd() * 260, 8 + rnd() * 16, 0, 0, 7); x.fill();
+  }
+  x.filter = 'none';
+  return c;
+}
+
+function thumbOf(src, el) {
+  const x = el.getContext('2d'); x.clearRect(0, 0, 44, 44);
+  const s = Math.min(src.width, src.height);
+  x.drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, 0, 0, 44, 44);
+}
+
+function avgRow(src, top) {
+  const h = Math.min(4, src.height);
+  const d = src.getContext('2d').getImageData(0, top ? 0 : src.height - h, src.width, h).data;
+  let r = 0, g = 0, b = 0, n = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; n++; }
+  return [r / n | 0, g / n | 0, b / n | 0];
+}
+
+function wireDrop(dropEl, inputEl, onFile) {
+  const take = f => { if (f && f.type.startsWith('image/')) onFile(f); else if (f) say('That file is not an image.'); };
+  inputEl.addEventListener('change', () => { take(inputEl.files[0]); inputEl.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => dropEl.addEventListener(ev, e => { e.preventDefault(); dropEl.classList.remove('over'); }));
+  dropEl.addEventListener('drop', e => take(e.dataTransfer.files[0]));
+}
+
+/* ---------- Panorama ---------- */
+let panoSrc = sampleSky(), panoOut = null;
+
+function renderPano() {
+  const [W, H] = $('#pano-size').value.split('x').map(Number);
+  const mode = $('#pano-mode').value;
+  const pos = $('#pano-pos').value / 100;
+  const B = Math.round(W * $('#pano-blend').value / 100);
+  const TW = W + B;
+  const T = mk(TW, H), t = T.getContext('2d');
+  t.imageSmoothingQuality = 'high';
+  let ih = H, iy = 0, ct = null, cb = null;
+  if (mode === 'fit') { ih = Math.round(panoSrc.height * TW / panoSrc.width); iy = Math.round((H - ih) * pos); }
+  if (mode === 'fit' && ih < H) {
+    ct = avgRow(panoSrc, true); cb = avgRow(panoSrc, false);
+    t.fillStyle = `rgb(${ct})`; t.fillRect(0, 0, TW, Math.max(iy, 0));
+    t.fillStyle = `rgb(${cb})`; t.fillRect(0, iy + ih, TW, H - iy - ih);
+  }
+  t.drawImage(panoSrc, 0, iy, TW, ih);
+  if (ct) {
+    const f = Math.round(Math.min(ih * .12, H * .08));
+    if (iy > 0) { const g = t.createLinearGradient(0, iy, 0, iy + f); g.addColorStop(0, `rgba(${ct},1)`); g.addColorStop(1, `rgba(${ct},0)`); t.fillStyle = g; t.fillRect(0, iy, TW, f); }
+    if (iy + ih < H) { const g = t.createLinearGradient(0, iy + ih - f, 0, iy + ih); g.addColorStop(0, `rgba(${cb},0)`); g.addColorStop(1, `rgba(${cb},1)`); t.fillStyle = g; t.fillRect(0, iy + ih - f, TW, f); }
+  }
+  const O = mk(W, H), o = O.getContext('2d');
+  o.drawImage(T, 0, 0, W, H, 0, 0, W, H);
+  if (B > 0) {
+    const tail = mk(B, H), tc = tail.getContext('2d');
+    tc.drawImage(T, W, 0, B, H, 0, 0, B, H);
+    tc.globalCompositeOperation = 'destination-in';
+    const g = tc.createLinearGradient(0, 0, B, 0);
+    g.addColorStop(0, 'rgba(0,0,0,1)'); g.addColorStop(1, 'rgba(0,0,0,0)');
+    tc.fillStyle = g; tc.fillRect(0, 0, B, H);
+    o.drawImage(tail, 0, 0);
+  }
+  panoOut = O; panoData = null;
+  const pc = $('#pano-canvas'), pw = Math.min(W, 1200), ph = pw / 2;
+  pc.width = pw; pc.height = ph;
+  const p = pc.getContext('2d');
+  if ($('#pano-seam').checked) {
+    p.drawImage(O, pw / 2, 0, pw, ph); p.drawImage(O, -pw / 2, 0, pw, ph);
+    p.strokeStyle = 'rgba(255,255,255,.55)'; p.setLineDash([6, 6]); p.beginPath(); p.moveTo(pw / 2, 0); p.lineTo(pw / 2, ph); p.stroke();
+  } else p.drawImage(O, 0, 0, pw, ph);
+  $('#pano-info').textContent = `${W} × ${H} px, seam blend ${B} px`;
+  $('#pos-v').textContent = Math.round(pos * 100) + '%';
+  $('#blend-v').textContent = $('#pano-blend').value + '%';
+  $('#pos-wrap').style.opacity = mode === 'fit' ? 1 : .4;
+  if (typeof scheduleFaces === 'function') scheduleFaces();
+}
+
+function setPanoSource(c, name, isSample) {
+  panoSrc = c; thumbOf(c, $('#pano-thumb'));
+  $('#pano-name').innerHTML = ''; $('#pano-name').textContent = name;
+  if (isSample) { const m = document.createElement('span'); m.className = 'mark'; m.textContent = 'example'; $('#pano-name').after(m); }
+  else $('#pano-name').parentElement.querySelectorAll('.mark').forEach(m => m.remove());
+  renderPano();
+}
+wireDrop($('#pano-drop'), $('#pano-file'), async f => { setPanoSource(await fileToCanvas(f), f.name, false); say('Panorama updated'); });
+['pano-size', 'pano-mode', 'pano-pos', 'pano-blend', 'pano-seam'].forEach(id => $('#' + id).addEventListener('input', renderPano));
+$('#pano-save').addEventListener('click', async () => { if (panoOut) saveFile(`panorama-${panoOut.width}x${panoOut.height}.png`, await toBlob(panoOut)); });
+/* ---------- Skybox faces ---------- */
+const FACES = [
+  { k: 'ft', name: 'Front', prop: 'SkyboxFt', file: 'front.png' },
+  { k: 'bk', name: 'Back', prop: 'SkyboxBk', file: 'back.png' },
+  { k: 'lf', name: 'Left', prop: 'SkyboxLf', file: 'left.png' },
+  { k: 'rt', name: 'Right', prop: 'SkyboxRt', file: 'right.png' },
+  { k: 'up', name: 'Up', prop: 'SkyboxUp', file: 'up.png' },
+  { k: 'dn', name: 'Down', prop: 'SkyboxDn', file: 'down.png' }
+];
+let boxSrc = sampleSky(), boxMode = 'same', panoData = null;
+const fstate = FACES.map(() => ({ img: null, flip: false, rot: 0 }));
+
+function squareCrop(src, size) {
+  const c = mk(size, size), s = Math.min(src.width, src.height);
+  const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
+  x.drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, 0, 0, size, size);
+  return c;
+}
+
+function cubeFace(i, size) {
+  const W = panoOut.width, H = panoOut.height;
+  if (!panoData) panoData = panoOut.getContext('2d').getImageData(0, 0, W, H).data;
+  const d = panoData, k = FACES[i].k;
+  const out = mk(size, size), ctx = out.getContext('2d'), img = ctx.createImageData(size, size), o = img.data;
+  for (let py = 0; py < size; py++) {
+    const t = 1 - 2 * (py + .5) / size;
+    for (let px = 0; px < size; px++) {
+      const u = 2 * (px + .5) / size - 1;
+      let x, y, z;
+      if (k === 'ft') { x = u; y = t; z = -1; }
+      else if (k === 'bk') { x = -u; y = t; z = 1; }
+      else if (k === 'lf') { x = -1; y = t; z = -u; }
+      else if (k === 'rt') { x = 1; y = t; z = u; }
+      else if (k === 'up') { x = -u; y = 1; z = -t; }
+      else { x = u; y = -1; z = -t; }
+      const lon = Math.atan2(x, -z), lat = Math.atan2(y, Math.hypot(x, z));
+      const fx = (lon / (2 * Math.PI) + .5) * W - .5, fy = (.5 - lat / Math.PI) * H - .5;
+      const x0 = Math.floor(fx), y0 = Math.floor(fy), wx = fx - x0, wy = fy - y0;
+      const xa = ((x0 % W) + W) % W, xb = (xa + 1) % W;
+      const ya = Math.min(H - 1, Math.max(0, y0)), yb = Math.min(H - 1, Math.max(0, y0 + 1));
+      const i00 = (ya * W + xa) * 4, i10 = (ya * W + xb) * 4, i01 = (yb * W + xa) * 4, i11 = (yb * W + xb) * 4;
+      const oi = (py * size + px) * 4;
+      for (let c = 0; c < 3; c++) {
+        o[oi + c] = (d[i00 + c] * (1 - wx) + d[i10 + c] * wx) * (1 - wy) + (d[i01 + c] * (1 - wx) + d[i11 + c] * wx) * wy;
+      }
+      o[oi + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+
+function renderFace(i, size) {
+  const st = fstate[i], k = FACES[i].k;
+  let base;
+  if (st.img) base = squareCrop(st.img, size);
+  else if (boxMode === 'pano' && panoOut) base = cubeFace(i, size);
+  else if (k === 'up' && $('#box-up').value === 'solid') { base = mk(size, size); const x = base.getContext('2d'); x.fillStyle = `rgb(${avgRow(boxSrc, true)})`; x.fillRect(0, 0, size, size); }
+  else if (k === 'dn' && $('#box-dn').value === 'solid') { base = mk(size, size); const x = base.getContext('2d'); x.fillStyle = `rgb(${avgRow(boxSrc, false)})`; x.fillRect(0, 0, size, size); }
+  else base = squareCrop(boxSrc, size);
+  if (!st.flip && !st.rot) return base;
+  const out = mk(size, size), x = out.getContext('2d');
+  x.translate(size / 2, size / 2); x.rotate(st.rot * Math.PI / 2); x.scale(st.flip ? -1 : 1, 1);
+  x.drawImage(base, -size / 2, -size / 2);
+  return out;
+}
+
+let facesQueued = false;
+function scheduleFaces() {
+  if (facesQueued) return; facesQueued = true;
+  requestAnimationFrame(() => {
+    facesQueued = false;
+    if (boxMode === 'pano' && !panoOut) return;
+    FACES.forEach((f, i) => {
+      const cv = $('#fc-' + f.k), x = cv.getContext('2d');
+      x.clearRect(0, 0, 256, 256); x.drawImage(renderFace(i, 256), 0, 0);
+    });
+  });
+}
+
+function buildFaceCards() {
+  $('#faces').innerHTML = FACES.map(f => `
+    <div class="face"><h3>${f.name} <code>${f.prop}</code></h3>
+      <canvas id="fc-${f.k}" width="256" height="256" aria-label="${f.name} face preview"></canvas>
+      <div class="row">
+        <button class="btn sm" data-a="flip" data-k="${f.k}">Flip</button>
+        <button class="btn sm" data-a="rot" data-k="${f.k}">Rotate</button>
+        <label class="btn sm" style="cursor:pointer">Image<input type="file" accept="image/*" data-a="img" data-k="${f.k}" hidden></label>
+        <button class="btn sm" data-a="save" data-k="${f.k}">Save</button>
+      </div></div>`).join('');
+  $('#ids').innerHTML = FACES.map(f => `<label class="f">${f.prop}<input type="text" id="id-${f.k}" inputmode="numeric" placeholder="asset ID"></label>`).join('');
+}
+
+$('#faces').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-a]'); if (!b) return;
+  const i = FACES.findIndex(f => f.k === b.dataset.k), st = fstate[i];
+  if (b.dataset.a === 'flip') st.flip = !st.flip;
+  else if (b.dataset.a === 'rot') st.rot = (st.rot + 1) % 4;
+  else if (b.dataset.a === 'save') { const sz = +$('#box-size').value; return saveFile(FACES[i].file, await toBlob(renderFace(i, sz))); }
+  scheduleFaces();
+});
+$('#faces').addEventListener('change', async e => {
+  const inp = e.target.closest('input[data-a="img"]'); if (!inp || !inp.files[0]) return;
+  const i = FACES.findIndex(f => f.k === inp.dataset.k);
+  fstate[i].img = await fileToCanvas(inp.files[0]); inp.value = '';
+  say(FACES[i].name + ' face uses its own image'); scheduleFaces();
+});
+
+wireDrop($('#box-drop'), $('#box-file'), async f => {
+  boxSrc = await fileToCanvas(f); thumbOf(boxSrc, $('#box-thumb'));
+  $('#box-name').textContent = f.name; $('#box-name').parentElement.querySelectorAll('.mark').forEach(m => m.remove());
+  fstate.forEach(s => { s.img = null; });
+  document.querySelector('input[name=src][value=same]').checked = true; boxMode = 'same';
+  const sq = boxSrc.width === boxSrc.height;
+  say(sq ? 'Image placed on all six faces' : 'Image is not square, so it was cropped from the centre');
+  scheduleFaces();
+});
+document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => {
+  boxMode = document.querySelector('input[name=src]:checked').value;
+  if (boxMode === 'pano') say('Faces are cut from the panorama. Edit it in the first tab.');
+  scheduleFaces();
+}));
+['box-up', 'box-dn'].forEach(id => $('#' + id).addEventListener('input', scheduleFaces));
+$('#pano-to-box').addEventListener('click', () => {
+  document.querySelector('input[name=src][value=pano]').checked = true; boxMode = 'pano';
+  fstate.forEach(s => { s.img = null; }); showTab('box'); scheduleFaces();
+});
+
+/* ---------- ZIP (store only) ---------- */
+const crcTable = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; } return t; })();
+function crc32(u8) { let c = 0xFFFFFFFF; for (let i = 0; i < u8.length; i++) c = crcTable[(c ^ u8[i]) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; }
+function makeZip(files) {
+  const enc = new TextEncoder(), parts = [], central = []; let off = 0;
+  files.forEach(f => {
+    const n = enc.encode(f.name), crc = crc32(f.data), h = new DataView(new ArrayBuffer(30));
+    h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(10, 0, true); h.setUint16(12, 0x21, true);
+    h.setUint32(14, crc, true); h.setUint32(18, f.data.length, true); h.setUint32(22, f.data.length, true); h.setUint16(26, n.length, true);
+    parts.push(h.buffer, n, f.data);
+    const c = new DataView(new ArrayBuffer(46));
+    c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(14, 0x21, true);
+    c.setUint32(16, crc, true); c.setUint32(20, f.data.length, true); c.setUint32(24, f.data.length, true); c.setUint16(28, n.length, true); c.setUint32(42, off, true);
+    central.push(c.buffer, n);
+    off += 30 + n.length + f.data.length;
+  });
+  const csize = central.reduce((s, p) => s + (p.byteLength ?? p.length), 0), e = new DataView(new ArrayBuffer(22));
+  e.setUint32(0, 0x06054b50, true); e.setUint16(8, files.length, true); e.setUint16(10, files.length, true); e.setUint32(12, csize, true); e.setUint32(16, off, true);
+  return new Blob([...parts, ...central, e.buffer], { type: 'application/zip' });
+}
+$('#box-zip').addEventListener('click', async () => {
+  if (boxMode === 'pano' && !panoOut) return;
+  const sz = +$('#box-size').value; say('Building six faces at ' + sz + ' px...');
+  await new Promise(r => setTimeout(r, 30));
+  const files = [];
+  for (let i = 0; i < FACES.length; i++) files.push({ name: FACES[i].file, data: new Uint8Array(await (await toBlob(renderFace(i, sz))).arrayBuffer()) });
+  saveFile('skybox-faces.zip', makeZip(files));
+});
+
+/* ---------- Roblox script ---------- */
+function genLuau() {
+  const v = k => { const s = $('#id-' + k).value.replace(/\D/g, ''); return `rbxassetid://${s || '0'}`; };
+  let s = `local Lighting = game:GetService("Lighting")\nfor _, c in ipairs(Lighting:GetChildren()) do\n\tif c:IsA("Sky") then c:Destroy() end\nend\n\nlocal sky = Instance.new("Sky")\n`;
+  FACES.forEach(f => { s += `sky.${f.prop} = "${v(f.k)}"\n`; });
+  s += `sky.StarCount = 0\nsky.CelestialBodiesShown = false\nsky.Parent = Lighting\n`;
+  if ($('#luau-light').checked) s += `\nLighting.ClockTime = 0\nLighting.Ambient = Color3.fromRGB(20, 40, 52)\nLighting.OutdoorAmbient = Color3.fromRGB(30, 60, 78)\nlocal atm = Lighting:FindFirstChildOfClass("Atmosphere") or Instance.new("Atmosphere")\natm.Density = 0.25\natm.Color = Color3.fromRGB(40, 110, 130)\natm.Parent = Lighting\n`;
+  $('#luau-out').value = s;
+}
+$('#ids').addEventListener('input', genLuau); $('#luau-light').addEventListener('input', genLuau);
+$('#luau-copy').addEventListener('click', async () => {
+  const ta = $('#luau-out');
+  try { await navigator.clipboard.writeText(ta.value); say('Script copied'); }
+  catch (e) { ta.focus(); ta.select(); say('Press Ctrl+C to copy the selected script'); }
+});
+
+/* ---------- Tabs and start ---------- */
+function showTab(which) {
+  ['pano', 'box'].forEach(k => { $('#pane-' + k).hidden = k !== which; $('#t-' + k).setAttribute('aria-selected', k === which); });
+  if (which === 'box') scheduleFaces();
+}
+$('#t-pano').addEventListener('click', () => showTab('pano'));
+$('#t-box').addEventListener('click', () => showTab('box'));
+document.addEventListener('paste', async e => {
+  const f = [...(e.clipboardData?.files || [])].find(x => x.type.startsWith('image/')); if (!f) return;
+  if ($('#pane-box').hidden) { setPanoSource(await fileToCanvas(f), 'pasted image', false); say('Panorama updated'); }
+  else { boxSrc = await fileToCanvas(f); thumbOf(boxSrc, $('#box-thumb')); $('#box-name').textContent = 'pasted image'; fstate.forEach(s => { s.img = null; }); scheduleFaces(); }
+});
+buildFaceCards(); genLuau();
+thumbOf(boxSrc, $('#box-thumb')); thumbOf(panoSrc, $('#pano-thumb'));
+renderPano(); scheduleFaces();
+</script>
+</body>
+</html>
