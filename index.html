@@ -79,6 +79,13 @@ summary{cursor:pointer;font:600 15px var(--font-display)}
 .ids{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
 textarea{width:100%;min-height:190px;font:12px/1.5 var(--font-mono);color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:6px;padding:10px;resize:vertical}
 .hint{font-size:13px;color:var(--muted);margin:0}
+.modal{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(2,8,14,.72);padding:16px}
+.modal[hidden]{display:none}
+.sheet{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:20px;max-width:460px;width:100%;display:flex;flex-direction:column;gap:14px;max-height:100%;overflow:auto}
+.sheet h2{margin:0;font:700 20px/1.2 var(--font-display);text-wrap:balance}
+.choice{display:flex;flex-direction:column;gap:3px;text-align:left;width:100%;border:1px solid var(--line);background:var(--panel-2);color:var(--fg);border-radius:8px;padding:12px 14px;cursor:pointer;font:600 15px var(--font-body)}
+.choice small{font:400 13px var(--font-body);color:var(--muted)}
+.choice:hover{border-color:var(--accent)}
 @media (prefers-reduced-motion:reduce){*{transition:none!important}}
 </style>
 </head>
@@ -116,7 +123,7 @@ textarea{width:100%;min-height:190px;font:12px/1.5 var(--font-mono);color:var(--
       </fieldset>
       <div class="row">
         <button class="btn primary" id="pano-save">Save panorama PNG</button>
-        <button class="btn" id="pano-to-box">Make skybox faces from this</button>
+        <button class="btn" id="pano-to-box">Create skybox</button>
       </div>
     </div>
     <div class="stage">
@@ -129,7 +136,7 @@ textarea{width:100%;min-height:190px;font:12px/1.5 var(--font-mono);color:var(--
     <div class="stack">
       <label class="drop" id="box-drop">
         <strong>Drop a square picture here</strong>
-        <small>A 1:1 image goes onto all six faces. Other shapes are cropped from the centre.</small>
+        <small>A 1:1 image goes onto all six faces. Other shapes are handled by the Image fit option below.</small>
         <input type="file" id="box-file" accept="image/*">
       </label>
       <div class="thumb"><canvas id="box-thumb" width="44" height="44"></canvas><span id="box-name">Sample night sky</span> <span class="mark">example</span></div>
@@ -141,6 +148,8 @@ textarea{width:100%;min-height:190px;font:12px/1.5 var(--font-mono);color:var(--
       </fieldset>
       <fieldset>
         <legend>Faces</legend>
+        <label class="f">Image fit
+          <select id="box-fit"><option value="crop" selected>Crop to a square from the centre</option><option value="stretch">Stretch to 1:1 image (good for skyboxes)</option></select></label>
         <label class="f">Face size
           <select id="box-size"><option value="512">512 × 512</option><option value="1024" selected>1024 × 1024</option><option value="2048">2048 × 2048</option></select></label>
         <label class="f">Top face (Up)
@@ -163,6 +172,14 @@ textarea{width:100%;min-height:190px;font:12px/1.5 var(--font-mono);color:var(--
       </details>
     </div>
   </section>
+  <div class="modal" id="choice-modal" hidden>
+    <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="choice-title">
+      <h2 id="choice-title">What type of skybox do you want to choose?</h2>
+      <button class="choice" id="choose-sphere">A sphere one (all image is visible)<small>Saves the full 2:1 picture as one PNG for a sphere or dome mesh.</small></button>
+      <button class="choice" id="choose-six">A six face one (crops your image)<small>Opens the six square faces. Your picture is cropped to a square from the centre.</small></button>
+      <button class="btn" id="choose-cancel">Cancel</button>
+    </div>
+  </div>
   <div id="status" role="status" aria-live="polite"></div>
 </div>
 <script>
@@ -312,7 +329,8 @@ const fstate = FACES.map(() => ({ img: null, flip: false, rot: 0 }));
 function squareCrop(src, size) {
   const c = mk(size, size), s = Math.min(src.width, src.height);
   const x = c.getContext('2d'); x.imageSmoothingQuality = 'high';
-  x.drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, 0, 0, size, size);
+  if ($('#box-fit').value === 'stretch') x.drawImage(src, 0, 0, src.width, src.height, 0, 0, size, size);
+  else x.drawImage(src, (src.width - s) / 2, (src.height - s) / 2, s, s, 0, 0, size, size);
   return c;
 }
 
@@ -411,7 +429,7 @@ wireDrop($('#box-drop'), $('#box-file'), async f => {
   fstate.forEach(s => { s.img = null; });
   document.querySelector('input[name=src][value=same]').checked = true; boxMode = 'same';
   const sq = boxSrc.width === boxSrc.height;
-  say(sq ? 'Image placed on all six faces' : 'Image is not square, so it was cropped from the centre');
+  say(sq ? 'Image placed on all six faces' : ($('#box-fit').value === 'stretch' ? 'Image stretched to a square on all six faces' : 'Image is not square, so it was cropped from the centre'));
   scheduleFaces();
 });
 document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('change', () => {
@@ -419,10 +437,35 @@ document.querySelectorAll('input[name=src]').forEach(r => r.addEventListener('ch
   if (boxMode === 'pano') say('Faces are cut from the panorama. Edit it in the first tab.');
   scheduleFaces();
 }));
-['box-up', 'box-dn'].forEach(id => $('#' + id).addEventListener('input', scheduleFaces));
-$('#pano-to-box').addEventListener('click', () => {
-  document.querySelector('input[name=src][value=pano]').checked = true; boxMode = 'pano';
+['box-up', 'box-dn', 'box-fit'].forEach(id => $('#' + id).addEventListener('input', scheduleFaces));
+function goSixFaces(cropSource) {
+  if (cropSource) {
+    boxSrc = panoSrc; thumbOf(boxSrc, $('#box-thumb'));
+    $('#box-name').textContent = $('#pano-name').textContent;
+    $('#box-name').parentElement.querySelectorAll('.mark').forEach(m => m.remove());
+    document.querySelector('input[name=src][value=same]').checked = true; boxMode = 'same';
+  } else {
+    document.querySelector('input[name=src][value=pano]').checked = true; boxMode = 'pano';
+  }
   fstate.forEach(s => { s.img = null; }); showTab('box'); scheduleFaces();
+}
+const modal = $('#choice-modal');
+function closeChoice() { modal.hidden = true; $('#pano-to-box').focus(); }
+$('#pano-to-box').addEventListener('click', () => {
+  if ($('#pano-mode').value === 'stretch') { modal.hidden = false; $('#choose-sphere').focus(); }
+  else goSixFaces(false);
+});
+$('#choose-cancel').addEventListener('click', closeChoice);
+modal.addEventListener('click', e => { if (e.target === modal) closeChoice(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !modal.hidden) closeChoice(); });
+$('#choose-sphere').addEventListener('click', async () => {
+  modal.hidden = true;
+  if (panoOut) saveFile(`skydome-${panoOut.width}x${panoOut.height}.png`, await toBlob(panoOut));
+  say('Sphere skybox: the whole picture is in this one 2:1 PNG.');
+});
+$('#choose-six').addEventListener('click', () => {
+  modal.hidden = true; goSixFaces(true);
+  say('Six faces: your picture was cropped to a square from the centre.');
 });
 
 /* ---------- ZIP (store only) ---------- */
